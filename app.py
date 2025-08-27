@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
+import plotly.graph_objects as go
+import plotly.figure_factory as ff
 import re
 import os
 
@@ -71,41 +71,90 @@ def load_all_data():
     return combined_df
 
 
-# --- Plot Functions ---
-def plot_wrk_metrics(df, title):
-    fig, ax1 = plt.subplots(figsize=(10, 5))
-    ax1.bar(df.index, df['Requests/sec'], alpha=0.6, label='Requests/sec')
-    ax1.set_ylabel("Requests/sec", color='blue')
-    ax1.tick_params(axis='y', labelcolor='blue')
+# --- Plot Functions (Plotly) ---
+def plot_wrk_metrics_plotly(df, title):
+    fig = go.Figure()
 
-    ax2 = ax1.twinx()
-    ax2.plot(df.index, df['Avg Latency(ms)'], 'ro-', label='Latency (ms)')
-    ax2.set_ylabel("Latency (ms)", color='red')
-    ax2.tick_params(axis='y', labelcolor='red')
+    fig.add_trace(go.Bar(
+        x=df.index,
+        y=df['Requests/sec'],
+        name='Requests/sec',
+        yaxis='y1'
+    ))
 
-    plt.title(title)
-    st.pyplot(plt)
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df['Avg Latency(ms)'],
+        name='Avg Latency (ms)',
+        yaxis='y2',
+        mode='lines+markers',
+        marker=dict(color='red')
+    ))
+
+    fig.update_layout(
+        title=title,
+        yaxis=dict(title='Requests/sec'),
+        yaxis2=dict(
+            title='Latency (ms)',
+            overlaying='y',
+            side='right'
+        ),
+        barmode='group',
+        xaxis=dict(title='Test Case'),
+        legend=dict(x=0.01, y=1.1, orientation='h')
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 
-def plot_dstat_metrics(df, title):
+def plot_dstat_metrics_plotly(df, title):
     metrics = ['usr', 'sys', 'idl', 'writ', 'int', 'csw']
-    df[metrics].plot(kind='bar', figsize=(12, 6))
-    plt.title(title)
-    plt.ylabel("Average Value")
-    plt.grid(True)
-    st.pyplot(plt)
+    df_metrics = df[metrics]
+
+    fig = go.Figure()
+    for col in df_metrics.columns:
+        fig.add_trace(go.Bar(
+            x=df_metrics.index,
+            y=df_metrics[col],
+            name=col
+        ))
+
+    fig.update_layout(
+        title=title,
+        barmode='group',
+        xaxis_title='Test',
+        yaxis_title='Average Value',
+        legend_title='Metric'
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 
-def plot_correlation(df):
-    plt.figure(figsize=(10, 6))
-    sns.heatmap(df.corr(), annot=True, cmap="coolwarm", fmt=".2f")
-    plt.title("Correlation Matrix")
-    st.pyplot(plt)
+def plot_correlation_plotly(df):
+    corr = df.corr().round(2)
+    z = corr.values
+    x = list(corr.columns)
+    y = list(corr.index)
+
+    fig = ff.create_annotated_heatmap(
+        z,
+        x=x,
+        y=y,
+        colorscale='RdBu',
+        showscale=True,
+        zmin=-1,
+        zmax=1,
+        annotation_text=corr.values.round(2),
+        hoverinfo="z"
+    )
+
+    fig.update_layout(title='Correlation Matrix')
+    st.plotly_chart(fig, use_container_width=True)
 
 
 # --- Streamlit UI ---
 def main():
-    st.title("wrk & dstat Performance Dashboard")
+    st.title("wrk & dstat Performance Dashboard (with Plotly)")
     option = st.selectbox("Select Test Type", ["Blocking", "Non-blocking", "Both"])
 
     combined_df = load_all_data()
@@ -113,30 +162,30 @@ def main():
     if option == "Blocking":
         df = combined_df.loc[["Blocking 1KB", "Blocking 8KB"]]
         st.subheader("Blocking: wrk Results")
-        plot_wrk_metrics(df, "Blocking - wrk Performance")
+        plot_wrk_metrics_plotly(df, "Blocking - wrk Performance")
         st.subheader("Blocking: System Metrics")
-        plot_dstat_metrics(df, "Blocking - dstat Metrics")
+        plot_dstat_metrics_plotly(df, "Blocking - dstat Metrics")
 
     elif option == "Non-blocking":
         df = combined_df.loc[["Non-blocking 1KB", "Non-blocking 8KB"]]
         st.subheader("Non-blocking: wrk Results")
-        plot_wrk_metrics(df, "Non-blocking - wrk Performance")
+        plot_wrk_metrics_plotly(df, "Non-blocking - wrk Performance")
         st.subheader("Non-blocking: System Metrics")
-        plot_dstat_metrics(df, "Non-blocking - dstat Metrics")
+        plot_dstat_metrics_plotly(df, "Non-blocking - dstat Metrics")
 
     elif option == "Both":
         st.subheader("1KB: Blocking vs Non-blocking")
         df_1kb = combined_df.loc[["Blocking 1KB", "Non-blocking 1KB"]]
-        plot_wrk_metrics(df_1kb, "1KB - wrk Performance")
-        plot_dstat_metrics(df_1kb, "1KB - dstat Metrics")
+        plot_wrk_metrics_plotly(df_1kb, "1KB - wrk Performance")
+        plot_dstat_metrics_plotly(df_1kb, "1KB - dstat Metrics")
 
         st.subheader("8KB: Blocking vs Non-blocking")
         df_8kb = combined_df.loc[["Blocking 8KB", "Non-blocking 8KB"]]
-        plot_wrk_metrics(df_8kb, "8KB - wrk Performance")
-        plot_dstat_metrics(df_8kb, "8KB - dstat Metrics")
+        plot_wrk_metrics_plotly(df_8kb, "8KB - wrk Performance")
+        plot_dstat_metrics_plotly(df_8kb, "8KB - dstat Metrics")
 
         st.subheader("Correlation Heatmap (All Tests)")
-        plot_correlation(combined_df)
+        plot_correlation_plotly(combined_df)
 
 
 if __name__ == "__main__":
